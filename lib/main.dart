@@ -10,9 +10,9 @@ import 'package:firebase_database/ui/firebase_animated_list.dart';
 import 'dart:convert';
 //import 'package:charts_flutter/flutter.dart' as charts;
 import 'package:intl/intl.dart';
-import 'my_flutter_app_icons.dart' as customIcon;
+import 'resources/my_flutter_app_icons.dart' as customIcon;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'image_banner.dart';
+import 'resources/image_banner.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,7 +46,7 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription<Event> _counterSubscription;
   StreamSubscription<Event> _messagesSubscription;
   bool _anchorToBottom = false;
-  List<RetrieveData> dataList = new List();
+  List<RetrieveData> dataList = new List.generate(24, (index) => null);
   //List<GraphData> graphList = new List();
   String _kTestKey = 'Hello';
   String _kTestValue = 'world!';
@@ -60,6 +60,8 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     // Demonstrates configuring to the database using a file
     _counterRef = FirebaseDatabase.instance.reference().child('Soil_Moisture/append');
+    deleteAll();
+    //deleteAll();
     // Demonstrates configuring the database directly
     final FirebaseDatabase database = FirebaseDatabase(app: widget.app);
     _messagesRef = database.reference().child('Soil_Moisture/append');
@@ -70,9 +72,10 @@ class _MyHomePageState extends State<MyHomePage> {
     });
     
     //storing data into device cache, using setPersistence
-    database.setPersistenceEnabled(true);
+    /*database.setPersistenceEnabled(true);
     database.setPersistenceCacheSizeBytes(10000000);
-    _counterRef.keepSynced(true);
+    _counterRef.keepSynced(true);*/
+    
     //_counterSubscription used to check if any event has changed in the app, and call setState() to rerender the app if a change occurs.
     //calling setState((){}) only already rerenders the page.
     _counterSubscription = _counterRef.onValue.listen((Event event) {
@@ -112,6 +115,11 @@ class _MyHomePageState extends State<MyHomePage> {
     super.dispose();
     _messagesSubscription.cancel();
     _counterSubscription.cancel();
+  }
+
+  void deleteAll(){
+    //dispose();
+    _counterRef.remove();
   }
   
   Future onSelectNotification(String payload) async {
@@ -185,7 +193,7 @@ class _MyHomePageState extends State<MyHomePage> {
               shrinkWrap: true,
               key: ValueKey<bool>(_anchorToBottom),
               query: _messagesRef,
-              physics: const NeverScrollableScrollPhysics(),
+              //physics: const NeverScrollableScrollPhysics(),
               reverse: false,
               sort: true
                   ? (DataSnapshot a, DataSnapshot b) => b.key.compareTo(a.key)
