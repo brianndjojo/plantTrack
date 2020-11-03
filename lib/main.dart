@@ -2,17 +2,20 @@
 //Reference 1 = https://github.com/FirebaseExtended/flutterfire/tree/master/packages/firebase_database
 //Reference 2 = https://www.youtube.com/watch?v=ZiagJJTqnZQ
 //Reference 3 = https://medium.com/@nitishk72/flutter-local-notification-1e43a353877b
+//Reference 4 = https://medium.com/@ayushpguptaapg/using-streams-in-flutter-62fed41662e4
+
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_database/ui/firebase_animated_list.dart';
 import 'dart:convert';
-//import 'package:charts_flutter/flutter.dart' as charts;
 import 'package:intl/intl.dart';
 import 'resources/my_flutter_app_icons.dart' as customIcon;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'resources/image_banner.dart';
+import 'dataRetrieval.dart';
+import 'package:hexcolor/hexcolor.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,38 +49,26 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription<Event> _counterSubscription;
   StreamSubscription<Event> _messagesSubscription;
   bool _anchorToBottom = false;
-  List<RetrieveData> dataList = new List.generate(24, (index) => null);
-  //List<GraphData> graphList = new List();
+
   String _kTestKey = 'Hello';
   String _kTestValue = 'world!';
   DatabaseError _error;
-  //DataSnapshot newestSnap;
-  
-  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
+
   @override
   void initState() {
-    
     super.initState();
+
     // Demonstrates configuring to the database using a file
     _counterRef = FirebaseDatabase.instance.reference().child('Soil_Moisture/append');
-    deleteAll();
-    //deleteAll();
     // Demonstrates configuring the database directly
     final FirebaseDatabase database = FirebaseDatabase(app: widget.app);
     _messagesRef = database.reference().child('Soil_Moisture/append');
-    database.reference().child('Soil_Moisture').once().then((DataSnapshot snapshot) {
+    database.reference().child('Soil_Moisture/append').once().then((DataSnapshot snapshot) {
       print('Connected to second database and read ${snapshot.value}');
-      //graphList = graphListRetrieval(snapshot, graphList);
-      //dataList.add(snapshot);
     });
-    
-    //storing data into device cache, using setPersistence
-    /*database.setPersistenceEnabled(true);
+    database.setPersistenceEnabled(true);
     database.setPersistenceCacheSizeBytes(10000000);
-    _counterRef.keepSynced(true);*/
-    
-    //_counterSubscription used to check if any event has changed in the app, and call setState() to rerender the app if a change occurs.
-    //calling setState((){}) only already rerenders the page.
+    _counterRef.keepSynced(true);
     _counterSubscription = _counterRef.onValue.listen((Event event) {
       setState(() {
         _error = null;
@@ -89,67 +80,46 @@ class _MyHomePageState extends State<MyHomePage> {
         _error = error;
       });
     });
-    //Checks if data updated into the database is valid or not.
     _messagesSubscription =
-      _messagesRef.limitToLast(1).onChildAdded.listen((Event event) {
+        _messagesRef.limitToLast(10).onChildAdded.listen((Event event) {
       print('Child added: ${event.snapshot.value}');
     }, onError: (Object o) {
       final DatabaseError error = o;
       print('Error: ${error.code} ${error.message}');
     });
-
-    // initialise the plugin. app_icon needs to be a added as a drawable resource to the Android head project   
-     // If you have skipped STEP 3 then change app_icon to @mipmap/ic_launcher
-    var initializationSettingsAndroid =
-        new AndroidInitializationSettings('@mipmap/ic_launcher'); 
-    var initializationSettingsIOS = new IOSInitializationSettings();
-    var initializationSettings = new InitializationSettings(
-        initializationSettingsAndroid, initializationSettingsIOS);
-    flutterLocalNotificationsPlugin = new FlutterLocalNotificationsPlugin();
-    flutterLocalNotificationsPlugin.initialize(initializationSettings,
-    onSelectNotification: onSelectNotification);
   }
 
   @override
+  //stops all streamsubscriptions to prevent memory leak.
   void dispose() {
     super.dispose();
     _messagesSubscription.cancel();
     _counterSubscription.cancel();
   }
 
-  void deleteAll(){
-    //dispose();
-    _counterRef.remove();
+  Future<void> _increment() async {
+    // Increment counter in transaction.
+    final TransactionResult transactionResult =
+        await _counterRef.runTransaction((MutableData mutableData) async {
+      mutableData.value = (mutableData.value ?? 0) + 1;
+      return mutableData;
+    });
+
+    if (transactionResult.committed) {
+      _messagesRef.push().set(<String, String>{
+        _kTestKey: '$_kTestValue ${transactionResult.dataSnapshot.value}'
+      });
+    } else {
+      print('Transaction not committed.');
+      if (transactionResult.error != null) {
+        print(transactionResult.error.message);
+      }
+    }
   }
-  
-  Future onSelectNotification(String payload) async {
-    showDialog(
-      context: context,
-      builder: (_) {
-        return new AlertDialog(
-          title: Text("Alert!"),
-          content: Text("Plantbed is dry. You should water them soon."),
-        );
-      },
-    );
-  }
-  
-  Future _showNotificationWithDefaultSound() async {
-    var androidPlatformChannelSpecifics = new AndroidNotificationDetails(
-        'your channel id', 'your channel name', 'your channel description',
-        importance: Importance.Max, priority: Priority.High, playSound: false,);
-    var iOSPlatformChannelSpecifics = new IOSNotificationDetails();
-    var platformChannelSpecifics = new NotificationDetails(
-        androidPlatformChannelSpecifics, iOSPlatformChannelSpecifics);
-    Duration interval = Duration(seconds:30);
-    //Stream<int> stream = Stream<int>.periodic(interval);
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      'Alert!',
-      'Plantbed is dry. You should water them soon.',
-      platformChannelSpecifics,
-      payload: 'Default_Sound',
-    );
+
+  //deletes all records within the database. Not for final implementation
+  void _delete() async{
+     _messagesRef.remove();
   }
 
 
@@ -157,128 +127,112 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HILL PlantTrack'),
-        backgroundColor: Colors.black,
-        leading: Builder(
-          builder: (BuildContext context) {
-            return IconButton(
-              icon: const Icon(customIcon.MyFlutterApp.droplet),
-              onPressed: () { Scaffold.of(context).openDrawer(); },
-              tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-            );
-          },
-        ),
+        title: const Text('PlantTrack'),
       ),
       body: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          //Flexible(
-            //child: Center(
-              /*child: _error == null
-              ? Text(
-                  'Button tapped $_counter time${_counter == 1 ? '' : 's'}.\n\n'
-                  'This includes all devices, ever.',
-                )
-              : Text(
-                  'Error retrieving button tap count:\n${_error.message}',
-              ),*/
-              //ImageBanner("assets/images/background.png"),
-            //),
-          //),
-          ImageBanner("assets/images/background.png"),
+          StreamBuilder(
+            stream: _messagesRef.onValue,
+            builder: (context, snapshot){
+              if(!snapshot.hasData){
+                return Flexible(child: Center(child: CircularProgressIndicator(),));
+              }    
+
+             
+              Map<dynamic, dynamic> map = snapshot.data.snapshot.value;
+              if(map == null){
+                return 
+                  Flexible(child: Center(child: CircularProgressIndicator(),));
+                
+              }
+              else{
+                List list = map.values.toList();
+                list.sort((a, b) {
+                  return b["ID"].compareTo(a["ID"]);
+                });
+            
+                return
+                  Flexible(
+                    child: Center(
+                      child: _error == null
+                        ? Text(
+                            '${list.first}'
+                                  
+                        )
+                        : Text(
+                            'Error retrieving data.\n${_error.message}',
+                      ),
+                    ),
+                  );
+              }
+            }
+             
+          ),
+         
+          ListTile(
+            leading: Checkbox(
+              onChanged: (bool value) {
+                setState(() {
+                  _anchorToBottom = value;
+                });
+              },
+              value: _anchorToBottom,
+            ),
+            title: const Text('Anchor to bottom'),
+          ),
           Flexible(
             child: FirebaseAnimatedList(
-              defaultChild: CircularProgressIndicator(),
-              shrinkWrap: true,
               key: ValueKey<bool>(_anchorToBottom),
               query: _messagesRef,
-              //physics: const NeverScrollableScrollPhysics(),
-              reverse: false,
-              sort: true
+              reverse: _anchorToBottom,
+              sort: _anchorToBottom
                   ? (DataSnapshot a, DataSnapshot b) => b.key.compareTo(a.key)
                   : null,
               itemBuilder: (BuildContext context, DataSnapshot snapshot,
                 Animation<double> animation, int index) {
-                DateTime currentTime = DateTime.now();
-                dataList = dataListRetrieval(snapshot, dataList, currentTime);
-                print('$index Most Recent ID: ${dataList.last.id}');
-                print(dataList.length);
-                String test = snapshot.value['MoistureState'];
-                print(test);
 
-                var correspondingIcon = Icons.check;  
-                Color correspondingColor = Colors.green;
-                if(dataList.last.moistState == 'Dry'){
-                  correspondingColor = Colors.red;
-                  correspondingIcon = customIcon.MyFlutterApp.cactus;
-                  _showNotificationWithDefaultSound();
-                }
-                if(dataList.last.moistState == 'Wet'){
-                  correspondingColor = Colors.blue;
-                  correspondingIcon = customIcon.MyFlutterApp.droplet;
-                }
-                
-                return SizeTransition(
-                  sizeFactor: animation,
-                  child:  ListTileTheme(
-                    textColor: correspondingColor ,
-                    child: 
-                    ListTile(
+                  //Converting retrieved data into a format where each attribute can be accessed.
+                  DateTime currentTime = DateTime.now();
+                  dataList = dataListRetrieval(snapshot, dataList, currentTime);
+                  
+                  var iconState = Icons.check;
+
+                  if(dataList.last.moistState == 'Wet'){
+                    iconState = customIcon.MyFlutterApp.droplet;
+                  }
+                  if(dataList.last.moistState == 'Dry'){
+                    iconState = customIcon.MyFlutterApp.cactus;
+                  }
+
+                  String stateColor = dataList.last.colorVal.replaceAll('#', '0xff');
+
+                  return SizeTransition(
+                    sizeFactor: animation,
+                    child: ListTile(
                       trailing: IconButton(
                         //onPressed: () =>
-                          //_messagesRef.child(snapshot.key).remove(),
-                        //gotta change this in a while.
-                        icon: Icon(correspondingIcon),
+                            //_messagesRef.child(snapshot.key).remove(),
+                        icon: Icon(iconState),
+                        color: Color(int.parse(stateColor)),
                       ),
                       title: Text(
-                        "${dataList.last.id} : ${dataList.last.moistState}"
+                        "$index: ${dataList.last.moistState}",
                       ),
-                      isThreeLine: false,
-                      subtitle: Text("${dataList.last.date} | MOISTURE: ${dataList.last.moistVal} | STATE: ${dataList.last.moistState}"),
-                      dense: true,
+                      subtitle: Text(
+                        "${dataList.last.date} | ${dataList.last.moistState} | ${dataList.last.moistVal}"
+                      ),
                     ),
-                  )
-                );
-              },
+                  );
+                },
             ),
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _delete,
+        tooltip: 'deletes all records',
+        child: const Icon(Icons.delete),
+      ),
     );
   }
 }
-
-
-List<RetrieveData> dataListRetrieval(DataSnapshot snapshot, List<RetrieveData> dataList, DateTime currentTime){
-  var data = snapshot.value;
-  dataList.clear();
-  String date = DateFormat('yyyy-MM-dd').format(currentTime);
-  
-  RetrieveData collectData = new RetrieveData(
-    int.parse(data['ID']),
-    data['MoistureState'],
-    int.parse(data['Moisture']),
-    data['color'],
-    date
-  );
-  dataList.add(collectData);
-  
-  dataList.sort((RetrieveData a, RetrieveData b){
-    return a.id.compareTo(b.id);
-  });
-  //print(dataList);
-  return dataList;
-}
-
-
-class RetrieveData{
-  int id;
-  String moistState;
-  int moistVal;
-  String colorVal;
-  String date;
-  RetrieveData(this.id, this.moistState, this.moistVal,this.colorVal, this.date);
-}
-
-
