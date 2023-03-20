@@ -14,5 +14,5 @@ data from a Firebase Database at real time.
 - **Firebase**
   - For hosting the records being retrieved by the Moisture Sensor
   
-##How the application works:
+## How the application works:
 - https://www.youtube.com/watch?v=FYOADeVERSE&feature=youtu.be
